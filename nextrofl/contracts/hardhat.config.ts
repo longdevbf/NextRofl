@@ -2,11 +2,11 @@
 import "@oasisprotocol/sapphire-hardhat";
 import "@nomicfoundation/hardhat-toolbox";
 import "dotenv/config";
-
+import "./src/tasks";
 export default {
   solidity: "0.8.28",
   networks: {
-    sapphire_testnet: {
+    'sapphire_testnet': {
       type: "http",           // Kết nối JSON-RPC
       chainType: "l1",        // Mạng layer1 (Sapphire giống Ethereum layer-1)
       url: process.env.SAPPHIRE_TESTNET_RPC_URL || "https://testnet.sapphire.oasis.io",

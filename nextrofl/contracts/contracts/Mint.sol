@@ -22,7 +22,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import {Subcall} from "@oasisprotocol/sapphire-contracts/contracts/Subcall.sol";
 
-contract MintNFT is ERC721URIStorage, Ownable {
+contract MintNFT is ERC721URIStorage{
     uint256 private _tokenID; // Simple counter replacing deprecated Counters
     bytes21 public roflAppID;
 
@@ -44,7 +44,7 @@ contract MintNFT is ERC721URIStorage, Ownable {
      * @dev Constructor sets ROFL app ID and initializes ERC721 with name/symbol.
      * @param roflID The ROFL app ID for authorized transaction signing.
      */
-    constructor(bytes21 roflID) ERC721("EncryptedNFT", "ENFT") Ownable(msg.sender) {
+    constructor(bytes21 roflID) ERC721("EncryptedNFT", "ENFT")  {
         roflAppID = roflID;
     }
 
