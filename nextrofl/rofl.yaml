@@ -21,6 +21,7 @@ deployments:
     network: testnet
     paratime: sapphire
     admin: myaccount
+    oci_repository: rofl.sh/8500df16-3cff-4699-9462-8673b446eab2:1759853503
     trust_root:
       height: 28757985
       hash: c7aa1aa50fb7865b39fed38b697fc9d2de09b4319f0611034e2ac2b204efe850
@@ -30,8 +31,15 @@ deployments:
           tcb_validity_period: 30
           min_tcb_evaluation_data_number: 18
           tdx: {}
-      enclaves: []
+      enclaves:
+        - id: msaQiMcktqd4eRJgOk9qkfAWMgU3giRvjyToassRsPQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: OH1I2IGcV+WHThU5uH17qHlJ21OlxExDcR/e9oOYYL4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
       endorsements:
         - any: {}
       fees: endorsing_node
       max_expiration: 3
+    machines:
+      default:
+        provider: oasis1qp2ens0hsp7gh23wajxa4hpetkdek3swyyulyrmz
+        offer: playground_short
+        id: "0000000000000327"

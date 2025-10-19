@@ -1,7 +1,7 @@
 services:
   mycontainer:
     build: .
-    image: "docker.io/org_name/image_name"      # Always provide FQDN image names!
+    image: "docker.io/longdevdatabase/nextrofl:latest@sha256:35bfdfa1b4d80e76d4f2db9533ee604fc203f96fa6201c534f95c4d941bed1a6"      # Always provide FQDN image names!
     platform: linux/amd64
     ports:
       - "8080:8080"  # Expose HTTP port for mint requests
