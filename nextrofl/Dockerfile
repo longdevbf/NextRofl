@@ -1,11 +1,14 @@
-FROM docker.io/alpine:3.21.2
+FROM python:3.11-slim
 
-# Add some dependencies.
-RUN apk add --no-cache curl jq netcat-openbsd xxd
+WORKDIR /app
 
-ADD app.sh /app.sh
-RUN chmod +x /app.sh
+# Install curl for ROFL API calls
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+COPY app.py /app/
+
+RUN chmod +x /app/app.py
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app.sh"]
+CMD ["python3", "/app/app.py"]

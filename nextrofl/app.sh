@@ -1,42 +1,24 @@
 #!/bin/sh
 # filepath: /home/longdz/nextrofl/app.sh
-set -x
 
-# Function để tính method ID
 get_method_id() {
-    local signature="$1"
-    case "$signature" in
-        "mintNFT(address,string)")
-            echo "a0712d68"  # Keccak256 hash của mintNFT(address,string), lấy 4 bytes đầu
-            ;;
-        *)
-            echo "00000000"
-            ;;
+    case "$1" in
+        "mintNFT(address,string)") echo "a0712d68" ;;
+        *) echo "00000000" ;;
     esac
 }
 
-# Function để encode ABI cho mintNFT(address,string)
 encode_mint_nft() {
     local recipient="$1"
     local metadata_uri="$2"
     
-    # Tính method ID chính xác
     method=$(get_method_id "mintNFT(address,string)")
-    
-    # Clean address (remove 0x prefix và pad to 32 bytes)
     recipient_clean=$(echo "$recipient" | sed 's/^0x//')
     recipient_padded=$(printf '%064s' "$recipient_clean" | tr ' ' '0')
-    
-    # Offset cho string parameter (0x40 = 64 bytes)
     offset="0000000000000000000000000000000000000000000000000000000000000040"
-    
-    # String length in hex (padded to 32 bytes)
     uri_length=$(printf '%064x' ${#metadata_uri})
-    
-    # Convert string to hex
     uri_hex=$(echo -n "$metadata_uri" | xxd -p | tr -d '\n')
     
-    # Pad string hex to multiple of 64 characters (32 bytes)
     remainder=$((${#uri_hex} % 64))
     if [ $remainder -ne 0 ]; then
         padding=$((64 - remainder))
@@ -48,144 +30,118 @@ encode_mint_nft() {
     echo "${method}${recipient_padded}${offset}${uri_length}${uri_hex_padded}"
 }
 
-# Function để process mint command
-process_mint_command() {
-    local command="$1"
-    echo "[INFO] Processing mint command: $command"
+process_mint() {
+    local body="$1"
     
-    # Parse JSON
-    recipient=$(echo "$command" | jq -r '.recipient // empty')
-    metadata_uri=$(echo "$command" | jq -r '.metadataUri // empty')
+    recipient=$(echo "$body" | jq -r '.recipient // empty')
+    metadata_uri=$(echo "$body" | jq -r '.metadataUri // empty')
     
     if [ -z "$recipient" ] || [ -z "$metadata_uri" ]; then
-        echo "[ERROR] Missing recipient or metadataUri"
-        echo '{"status":"error","message":"Missing required fields"}' > /tmp/last_result
-        return 1
+        echo '{"status":"error","message":"Missing required fields"}'
+        return
     fi
     
-    echo "[INFO] Minting NFT for recipient: $recipient with metadata: $metadata_uri"
+    echo "[INFO] Minting for: $recipient" >&2
+    echo "[INFO] Metadata: $metadata_uri" >&2
     
-    # Encode transaction data
     tx_data=$(encode_mint_nft "$recipient" "$metadata_uri")
+    echo "[DEBUG] TX Data: 0x$tx_data" >&2
     
-    echo "[DEBUG] Transaction data: 0x$tx_data"
-    
-    # Submit transaction to ROFL
-    response=$(curl -s \
-      --unix-socket /run/rofl-appd.sock \
+    response=$(curl -s --unix-socket /run/rofl-appd.sock \
       -H "Content-Type: application/json" \
-      -d "{\"tx\": {\"kind\": \"eth\", \"data\": {\"gas_limit\": 300000, \"to\": \"${CONTRACT_ADDRESS}\", \"value\": 0, \"data\": \"0x${tx_data}\"}}}" \
+      -d "{\"tx\":{\"kind\":\"eth\",\"data\":{\"gas_limit\":300000,\"to\":\"0x${CONTRACT_ADDRESS}\",\"value\":0,\"data\":\"0x${tx_data}\"}}}" \
       http://localhost/rofl/v1/tx/sign-submit)
-
-    echo "[DEBUG] Submit Response: $response"
+    
+    echo "[DEBUG] ROFL Response: $response" >&2
     
     tx_hash=$(echo "$response" | jq -r '.tx_hash // empty')
     if [ -n "$tx_hash" ]; then
-        echo "[OK] NFT Mint transaction submitted. TxHash: $tx_hash"
-        echo "{\"status\":\"success\",\"txHash\":\"$tx_hash\",\"recipient\":\"$recipient\"}" > /tmp/last_result
+        echo "[OK] TX Hash: $tx_hash" >&2
+        echo "{\"status\":\"success\",\"txHash\":\"$tx_hash\",\"recipient\":\"$recipient\"}"
     else
-        echo "[FAIL] NFT Mint transaction failed!"
         error_msg=$(echo "$response" | jq -r '.error // "Transaction failed"')
-        echo "{\"status\":\"error\",\"message\":\"$error_msg\"}" > /tmp/last_result
+        echo "[FAIL] Error: $error_msg" >&2
+        echo "{\"status\":\"error\",\"message\":\"$error_msg\"}"
     fi
 }
 
-# Function để handle HTTP request
-handle_http_request() {
-    local request="$1"
-    
-    # Extract request line
-    local request_line=$(echo "$request" | head -n 1)
-    local method=$(echo "$request_line" | awk '{print $1}')
-    local path=$(echo "$request_line" | awk '{print $2}')
-    
-    echo "[DEBUG] Method: $method, Path: $path"
-    
-    # Handle OPTIONS (CORS preflight)
-    if [ "$method" = "OPTIONS" ]; then
-        echo "HTTP/1.1 204 No Content"
-        echo "Access-Control-Allow-Origin: *"
-        echo "Access-Control-Allow-Methods: POST, OPTIONS"
-        echo "Access-Control-Allow-Headers: Content-Type"
-        echo ""
-        return
-    fi
-    
-    # Handle POST /mint
-    if [ "$method" = "POST" ] && [ "$path" = "/mint" ]; then
-        # Extract body (after empty line)
-        local body=$(echo "$request" | sed -n '/^$/,${p;/^$/d;}')
+echo "[INFO] ====================================="
+echo "[INFO] ROFL NFT Minter Starting"
+echo "[INFO] Contract: 0x${CONTRACT_ADDRESS}"
+echo "[INFO] Port: 8080"
+echo "[INFO] ====================================="
+
+while true; do
+    nc -l -p 8080 -q 1 | (
+        # Read request line
+        read method path version
         
-        echo "[DEBUG] Request body: $body"
+        echo "[REQUEST] $method $path" >&2
         
-        if [ -n "$body" ]; then
-            process_mint_command "$body"
+        # Read headers
+        content_length=0
+        while read header; do
+            header=$(echo "$header" | tr -d '\r')
+            [ -z "$header" ] && break
             
-            # Send response with result
-            echo "HTTP/1.1 200 OK"
-            echo "Content-Type: application/json"
-            echo "Access-Control-Allow-Origin: *"
-            echo ""
-            cat /tmp/last_result 2>/dev/null || echo '{"status":"processing"}'
-        else
-            # No body error
-            echo "HTTP/1.1 400 Bad Request"
-            echo "Content-Type: application/json"
-            echo "Access-Control-Allow-Origin: *"
-            echo ""
-            echo '{"status":"error","message":"No request body"}'
+            case "$header" in
+                Content-Length:*)
+                    content_length=$(echo "$header" | awk '{print $2}' | tr -d '\r')
+                    ;;
+            esac
+        done
+        
+        # Read body if present
+        body=""
+        if [ "$content_length" -gt 0 ]; then
+            body=$(dd bs=1 count=$content_length 2>/dev/null)
         fi
-        return
-    fi
-    
-    # Unknown endpoint
-    echo "HTTP/1.1 404 Not Found"
-    echo "Content-Type: application/json"
-    echo "Access-Control-Allow-Origin: *"
-    echo ""
-    echo '{"status":"error","message":"Invalid endpoint. Use POST /mint"}'
-}
-
-# HTTP server với proper request handling
-start_http_server() {
-    echo "[INFO] Starting HTTP server on port 8080..."
-    
-    while true; do
-        # Listen for connection and capture full request
-        {
-            # Read request into variable
-            request=""
-            while IFS= read -r line; do
-                request="${request}${line}"$'\n'
-                # Break on empty line (end of headers)
-                [ -z "$(echo "$line" | tr -d '\r')" ] && break
-            done
-            
-            # Read body if Content-Length present
-            content_length=$(echo "$request" | grep -i "Content-Length:" | awk '{print $2}' | tr -d '\r')
-            if [ -n "$content_length" ]; then
-                body=$(head -c "$content_length")
-                request="${request}${body}"
-            fi
-            
-            # Handle request and send response
-            handle_http_request "$request"
-            
-        } | nc -l -p 8080 -q 1
         
-        # Small delay before next listen
-        sleep 0.1
-    done
-}
-
-# Initialize
-echo '{"status":"ready"}' > /tmp/last_result
-
-echo "[INFO] ====================================="
-echo "[INFO] Starting ROFL NFT Minter"
-echo "[INFO] Contract Address: ${CONTRACT_ADDRESS}"
-echo "[INFO] Listening on port 8080"
-echo "[INFO] ====================================="
-
-# Start HTTP server
-start_http_server
+        # Build response
+        response_body=""
+        status="404 Not Found"
+        
+        case "$method:$path" in
+            OPTIONS:*)
+                status="200 OK"
+                response_body='{"status":"ok"}'
+                ;;
+            POST:/mint)
+                status="200 OK"
+                if [ -n "$body" ]; then
+                    response_body=$(process_mint "$body")
+                else
+                    response_body='{"status":"error","message":"No body"}'
+                fi
+                ;;
+            GET:/|GET:/health)
+                status="200 OK"
+                response_body='{"status":"ready","service":"ROFL NFT Minter"}'
+                ;;
+            GET:/favicon.ico|GET:/robots.txt)
+                status="204 No Content"
+                response_body=""
+                ;;
+            *)
+                status="404 Not Found"
+                response_body='{"status":"error","message":"Not found"}'
+                ;;
+        esac
+        
+        # Calculate content length
+        content_len=${#response_body}
+        
+        # Send response
+        printf "HTTP/1.1 %s\r\n" "$status"
+        printf "Access-Control-Allow-Origin: *\r\n"
+        printf "Access-Control-Allow-Methods: POST, OPTIONS, GET\r\n"
+        printf "Access-Control-Allow-Headers: Content-Type\r\n"
+        printf "Content-Type: application/json\r\n"
+        printf "Content-Length: %d\r\n" "$content_len"
+        printf "Connection: close\r\n"
+        printf "\r\n"
+        printf "%s" "$response_body"
+    )
+    
+    sleep 0.1
+done

@@ -1,4 +1,4 @@
-const ROFL_ENDPOINT = process.env.NEXT_PUBLIC_ROFL_ENDPOINT || 'http://localhost:8080';
+const ROFL_ENDPOINT = 'https://p8080.m885.opf-testnet-rofl-25.rofl.app'
 
 export interface MintNFTRequest {
   recipient: string;
